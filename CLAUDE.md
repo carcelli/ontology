@@ -25,20 +25,24 @@ Requires Python >= 3.11.
 ## Commands
 
 ```bash
+# Install (editable + dev tools)
+pip install -e ".[dev]"
+
 # Tests
-python -m pytest tests/ -x -q
+make test                    # or: python -m pytest tests/ -x -q
 
 # Single test
 python -m pytest tests/test_schema.py -x -q
 
 # Type checking
-mypy src/
+make typecheck               # or: mypy src/
 
-# Lint (once configured)
-ruff check src/ tests/
+# Lint
+make lint                    # or: ruff check src/ tests/
+
+# All checks (gate before push)
+make dryrun                  # runs test + typecheck + lint
 ```
-
-No build, test, or lint commands are configured yet — add them alongside the first toolchain commit and update this section.
 
 ## Architecture
 
@@ -50,26 +54,38 @@ No build, test, or lint commands are configured yet — add them alongside the f
 4. **Thread safety** — RLock on all mutations, not just persistence.
 5. **Namespaced triples** — every entity is namespaced (`polymarket:Market`, `nba:Player`, `crypto:Token`).
 
-### Target Directory Layout
+### Directory Layout (v1.1)
 
 ```
 src/ontology/
-├── __init__.py
-├── protocols.py          # Abstract interfaces (OntologyBackend, DomainPlugin, EnricherProtocol)
-├── schema.py             # Pydantic v2 models: Triple, Entity, Relation, Namespace
-├── namespace.py          # Namespace registry + validation (polymarket:*, nba:*, etc.)
-├── graph.py              # Facade — delegates to current backend
-├── registry.py           # Auto-discovery via entry_points, no manual edits
-├── enricher.py           # Domain-agnostic enrichers only (HubDecomposer = topological)
-├── events.py             # Lightweight pub/sub event bus for reactive enrichment
-├── backends/
-│   ├── __init__.py       # Default = Kuzu
-│   ├── networkx.py       # Lightweight fallback / test backend
-│   ├── kuzu.py           # Default backend (embedded, Python-native, fast)
-│   └── neo4j.py          # Production scale (stub until needed)
-└── config.py             # Kernel configuration
-tests/                    # Mirrors src/ontology/ structure
+├── __init__.py           # Public API re-exports
+├── schema.py             # Pydantic v2: Triple, EntityRef, Predicate, Entity, QueryResult
+├── protocols.py          # OntologyBackend + EnricherProtocol + DomainPlugin (typing.Protocol)
+├── namespace.py          # Namespace registry + migration helpers
+├── config.py             # KernelConfig (thin, pydantic-settings)
+├── graph.py              # OntologyGraph facade + convenience methods
+├── enricher.py           # HubDecomposer + EnrichmentPipeline (explicit, no events)
+├── migration.py          # Load onto-market's legacy ontology.json
+├── registry.py           # PluginRegistry + discover_plugins (entry-point auto-discovery)
+└── backends/
+    ├── __init__.py       # Backend factory (create_backend)
+    ├── networkx.py       # MultiDiGraph backend (reference, test fallback)
+    ├── kuzu.py           # Embedded Kuzu backend (discrete relation types per predicate)
+    └── neo4j.py          # Production stub (NotImplementedError)
+tests/
+├── conftest.py           # Shared fixtures
+├── test_schema.py
+├── test_namespace.py
+├── test_config.py
+├── test_backend_conformance.py  # Parametrized contract suite (NX + Kuzu)
+├── test_graph.py
+├── test_enricher.py
+├── test_registry.py      # Plugin registry + DomainPlugin protocol tests
+└── test_kuzu_specific.py # Kuzu-specific: discrete relations, persistence, batch
 ```
+
+#### Planned for v2.0
+- `src/ontology/events.py` — post-commit event bus
 
 ### Key Interfaces (protocols.py)
 
